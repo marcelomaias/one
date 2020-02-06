@@ -1,0 +1,32 @@
+main {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  grid-template-areas: "first main second";
+  .layout-content {
+    grid-area: main;
+  }
+  .sidebar-first {
+    grid-area: first;
+  }
+  .sidebar-second {
+    grid-area: second;
+  }
+}
+.both-sidebars {
+  main {
+    grid-template-areas: "first main second";
+  }
+}
+.sidebar-first {
+  main {
+    grid-template-areas: "first main main";
+  }
+}
+.sidebar-second {
+  main {
+    grid-template-areas: "main main second";
+  }
+}
+.container {
+  padding: 0 15px;
+}

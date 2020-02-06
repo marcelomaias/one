@@ -1,0 +1,8 @@
+@import "./remedies";
+@import "./common";
+@import "./layout";
+
+$bg-color: #eee;
+body {
+  background-color: $bg-color;
+}

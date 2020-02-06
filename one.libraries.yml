@@ -1,0 +1,6 @@
+global-assets:
+  css:
+    component:
+      css/main.css: {}
+  js:
+    js/main.js: {}

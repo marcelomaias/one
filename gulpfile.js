@@ -17,17 +17,16 @@ const server = browserSync.create();
 const port = argv.port || 9000;
 
 const isProd = process.env.NODE_ENV === "production";
-const isTest = process.env.NODE_ENV === "test";
-const isDev = !isProd && !isTest;
+const isDev = !isProd;
 
 function styles() {
-  return src("app/styles/*.scss")
+  return src("./src/scss/*.scss")
     .pipe($.plumber())
     .pipe($.if(!isProd, $.sourcemaps.init()))
     .pipe(
       $.sass
         .sync({
-          outputStyle: "expanded",
+          outputStyle: "compressed",
           precision: 10,
           includePaths: ["."]
         })
@@ -35,33 +34,25 @@ function styles() {
     )
     .pipe($.postcss([autoprefixer()]))
     .pipe($.if(!isProd, $.sourcemaps.write()))
-    .pipe(dest(".tmp/styles"))
+    .pipe(dest("css"))
     .pipe(server.reload({ stream: true }));
 }
 
 function scripts() {
   const b = browserify({
-    entries: "app/scripts/main.js",
+    entries: "./src/js/main.js",
     transform: babelify,
     debug: true
   });
   return b
     .bundle()
-    .pipe(source("bundle.js"))
+    .pipe(source("main.js"))
     .pipe($.plumber())
     .pipe(buffer())
     .pipe($.if(!isProd, $.sourcemaps.init({ loadMaps: true })))
     .pipe($.if(!isProd, $.sourcemaps.write(".")))
-    .pipe(dest(".tmp/scripts"))
-    .pipe(server.reload({ stream: true }));
-}
-
-function views() {
-  return src("app/*.pug")
-    .pipe($.plumber())
-    .pipe($.pug({ pretty: true }))
-    .pipe(dest(".tmp"))
-    .pipe(server.reload({ stream: true }));
+    .pipe(dest("js"));
+  // .pipe(server.reload({ stream: true }));
 }
 
 const lintBase = files => {
@@ -72,141 +63,43 @@ const lintBase = files => {
     .pipe($.if(!server.active, $.eslint.failAfterError()));
 };
 function lint() {
-  return lintBase("app/scripts/**/*.js").pipe(dest("app/scripts"));
-}
-function lintTest() {
-  return lintBase("test/spec/**/*.js").pipe(dest("test/spec"));
-}
-
-function html() {
-  return src(["app/*.html", ".tmp/*.html"])
-    .pipe($.useref({ searchPath: [".tmp", "app", "."] }))
-    .pipe($.if(/\.js$/, $.uglify({ compress: { drop_console: true } })))
-    .pipe(
-      $.if(/\.css$/, $.postcss([cssnano({ safe: true, autoprefixer: false })]))
-    )
-    .pipe(
-      $.if(
-        /\.html$/,
-        $.htmlmin({
-          collapseWhitespace: true,
-          minifyCSS: true,
-          minifyJS: { compress: { drop_console: true } },
-          processConditionalComments: true,
-          removeComments: true,
-          removeEmptyAttributes: true,
-          removeScriptTypeAttributes: true,
-          removeStyleLinkTypeAttributes: true
-        })
-      )
-    )
-    .pipe(dest("dist"));
+  return lintBase("./src/js/**/*.js").pipe(dest("js"));
 }
 
 function images() {
-  return src("app/images/**/*", { since: lastRun(images) })
+  return src("./src/images/**/*", { since: lastRun(images) })
     .pipe($.imagemin())
-    .pipe(dest("dist/images"));
+    .pipe(dest("images"));
 }
 
 function fonts() {
-  return src("app/fonts/**/*.{eot,svg,ttf,woff,woff2}").pipe(
-    $.if(!isProd, dest(".tmp/fonts"), dest("dist/fonts"))
+  return src("./src/fonts/**/*.{eot,svg,ttf,woff,woff2}").pipe(
+    $.if(!isProd, dest("fonts"), dest("fonts"))
   );
 }
 
-function extras() {
-  return src(["app/*", "!app/*.html", "!app/*.pug"], {
-    dot: true
-  }).pipe(dest("dist"));
-}
-
 function clean() {
-  return del([".tmp", "dist"]);
-}
-
-function measureSize() {
-  return src("dist/**/*").pipe($.size({ title: "build", gzip: true }));
+  return del(["css", "js", "images", "fonts"]);
 }
 
 const build = series(
   clean,
-  parallel(
-    lint,
-    series(parallel(views, styles, scripts), html),
-    images,
-    fonts,
-    extras
-  ),
-  measureSize
+  parallel(lint, parallel(styles, scripts), images, fonts)
 );
 
-function startAppServer() {
-  server.init({
-    notify: false,
-    port,
-    server: {
-      baseDir: [".tmp", "app"],
-      routes: {
-        "/node_modules": "node_modules"
-      }
-    }
-  });
+function watchTask() {
+  watch(["./src/images/**/*", "./src/fonts/**/*"]).on("change", server.reload);
 
-  watch(["app/*.html", "app/images/**/*", ".tmp/fonts/**/*"]).on(
-    "change",
-    server.reload
-  );
-
-  watch("app/**/*.pug", views);
-  watch("app/styles/**/*.scss", styles);
-  watch("app/scripts/**/*.js", scripts);
-  watch("app/fonts/**/*", fonts);
-}
-
-function startTestServer() {
-  server.init({
-    notify: false,
-    port,
-    ui: false,
-    server: {
-      baseDir: "test",
-      routes: {
-        "/scripts": ".tmp/scripts",
-        "/node_modules": "node_modules"
-      }
-    }
-  });
-
-  watch("app/scripts/**/*.js", scripts);
-  watch(["test/spec/**/*.js", "test/index.html"]).on("change", server.reload);
-  watch("test/spec/**/*.js", lintTest);
-}
-
-function startDistServer() {
-  server.init({
-    notify: false,
-    port,
-    server: {
-      baseDir: "dist",
-      routes: {
-        "/node_modules": "node_modules"
-      }
-    }
-  });
+  watch("./src/scss/**/*.scss", styles);
+  watch("./src/js/**/*.js", scripts);
+  watch("./src/fonts/**/*", fonts);
 }
 
 let serve;
 if (isDev) {
-  serve = series(
-    clean,
-    parallel(views, styles, scripts, fonts),
-    startAppServer
-  );
-} else if (isTest) {
-  serve = series(clean, parallel(views, scripts), startTestServer);
+  serve = series(clean, parallel(styles, scripts, fonts), watchTask);
 } else if (isProd) {
-  serve = series(build, startDistServer);
+  serve = build;
 }
 
 exports.serve = serve;
